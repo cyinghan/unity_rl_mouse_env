@@ -1,5 +1,4 @@
 import os
-import matplotlib.pyplot as plt
 import numpy as np
 
 from mlagents_envs.environment import UnityEnvironment
@@ -8,8 +7,9 @@ from mlagents_envs.side_channel.engine_configuration_channel import EngineConfig
 from agent import *
 
 channel = EngineConfigurationChannel()
-env = UnityEnvironment(file_name='test_run', side_channels=[channel])
-channel.set_configuration_parameters(time_scale = 3.0)
+# env = UnityEnvironment(file_name='mouse_env/linux_exec', side_channels=[channel])
+env = UnityEnvironment(base_port=5004, side_channels=[channel])
+# channel.set_configuration_parameters(time_scale = 1.0)
 
 #Reset the environment
 env.reset()
@@ -19,8 +19,8 @@ group_spec = env.get_behavior_spec(group_name)
 step_result = env.get_steps(group_name)
 
 print("Number of observations : ", group_spec.observation_shapes)
-num_agents = 1
-agent = PPO_Agent(env, 224, 4, group_spec.action_size, num_agents)
+num_agents = 4
+agent = PPO_Agent(env, 224, 56, group_spec.action_size, num_agents)
 
 model_dir = 'saved_models/'
 model_name = 'unity_continuous_' + str(group_name) + '_' + str(num_agents) + '_maxscore' + '_agents.pt'

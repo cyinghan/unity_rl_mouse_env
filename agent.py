@@ -6,13 +6,13 @@ import torch.nn.functional as F
 import torch.nn.utils as U
 from collections import namedtuple, deque
 from PPO_2_models import PPO_ActorCritic
-
+import time
 ##### CONFIG PARMAS #####
 ##### CONFIG PARMAS #####
-BATCH_SIZE = 256             # batch size of sampling
-MIN_BATCH_NO = 16             # min no of batches needed in the memory before learning
-GAMMA = 0.975                  # discount factor
-T_MAX = 256                   # max number of time step for collecting trajectory
+BATCH_SIZE = 512             # batch size of sampling
+MIN_BATCH_NO = 32             # min no of batches needed in the memory before learning
+GAMMA = 0.95                  # discount factor
+T_MAX = 512                   # max number of time step for collecting trajectory
 T_MAX_EPS = int(3e4)          # max number of steps before break
 LR = 1e-4                     # learning rate #5e-4
 OPTIM_EPSILON = 1e-5          # EPS for Adam optimizer
@@ -21,10 +21,10 @@ GRAD_CLIP_MAX = 1.0           # max gradient allowed
 CRITIC_L_WEIGHT = 1.0         # mean square error term weight
 ENT_WEIGHT = 0.01             # weight of entropy added
 ENT_DECAY = 0.99             # decay of entropy per 'step'
-STD_SCALE_INIT = 1.0          # initial value of std scale for action resampling
+STD_SCALE_INIT = 2.0          # initial value of std scale for action resampling
 STD_SCALE_DECAY = 0.99       # scale decay of std
 P_RATIO_EPS = 0.1             # eps for ratio clip 1+eps, 1-eps
-EPS_DECAY = 0.99             # decay factor for eps for ppo clip
+EPS_DECAY = 0.99           # decay factor for eps for ppo clip
 NAN_PENALTY = -5.0            # penalty for actions that resulted in nan reward
 USE_GAE = True                # use GAE flag
 GAE_TAU = 0.99                # value control how much agent rely on current estimate
@@ -44,20 +44,25 @@ def loadTrainedModel(agent, path):
 
     return agent
 
-def preprocess(inputs):
+def preprocess(inputs, agent):
     """Preprocess images and proprio input"""
-    image_tensor = torch.tensor(np.concatenate([inputs.obs[0][0], inputs.obs[1][0]], axis=2))
-    image_tensor = torch.reshape(image_tensor, [6, 224, 224])
-    image_batch = image_tensor.unsqueeze(0) # create a mini-batch as expected by the model
+    # image_tensor = torch.tensor(inputs.obs[0][agent])
+    # image_tensor = image_tensor.permute([2, 0, 1])
+    # image_batch1 = image_tensor.unsqueeze(0) # create a mini-batch as expected by the model
+    #
+    # image_tensor = torch.tensor(inputs.obs[1][agent])
+    # image_tensor = image_tensor.permute([2, 0, 1])
+    # image_batch2 = image_tensor.unsqueeze(0) # create a mini-batch as expected by the model
 
-    proprio_tensor = torch.tensor(inputs.obs[2][0])
+    proprio_tensor = torch.tensor(inputs.obs[0][agent])
     proprio_batch = proprio_tensor.unsqueeze(0)
-    return (image_batch, proprio_batch)
+    # print(proprio_batch)
+    return [proprio_batch]
 
 def collect_state(step_obj, result):
     for i, Id in enumerate(step_obj.agent_id):
         if not result[Id]:
-            result[Id] = preprocess(step_obj)
+            result[Id] = preprocess(step_obj, Id)
     return result
 
 def collect_reward(step_obj, result):
@@ -166,25 +171,27 @@ class PPO_Agent():
         self.env.step()
         step_result = self.env.get_steps(self.brain_name)
         states_recorded = collect_state(step_result[0], states_recorded)
-        while any_false(states_recorded):
-            self.env.step()
-            step_result = self.env.get_steps(self.brain_name)
-            states_recorded = collect_state(step_result[0], states_recorded)
+        # while any_false(states_recorded):
+        #     self.env.step()
+        #     step_result = self.env.get_steps(self.brain_name)
+        #     states_recorded = collect_state(step_result[0], states_recorded)
 
         state = [torch.cat(i, dim=0) for i in list(zip(*states_recorded))]
         # Collect the STEP trajectory data (s,a,r,ns,d)
         ep_len = 0
         while True:
             # state -> prob / actions
+
             state_predict = self.model_local(state, std_scale=self.std_scale)
             action = state_predict['a'] #torch, num_agents x action_size no grad
-            action = np.clip(action, -1., 1.)
-            if np.any(np.isnan(action.tolist())):
-                print("nan action encountered!")
-                return
+            # print(action)
+            action = np.clip(action.detach().numpy(), -1., 1.)
+            # if np.any(np.isnan(action.tolist())):
+            #     print("nan action encountered!")
+            #     return
 
             # env_info = self.env.step(action)[self.brain_name]
-            self.env.set_actions(self.brain_name, action.numpy())
+            self.env.set_actions(self.brain_name, action)
             self.env.step()
 
             done = [False] * self.num_agents
@@ -194,20 +201,20 @@ class PPO_Agent():
             step_result = self.env.get_steps(self.brain_name)
             states_recorded = collect_state(step_result[0], states_recorded)
             rewards_recorded = collect_reward(step_result[0], rewards_recorded)
-            done = collect_done(step_result[1], done)
+            # done = collect_done(step_result[1], done)
              # array: (num_agents,)
-
-            while any_false(states_recorded):
-                self.env.step()
-                step_result = self.env.get_steps(self.brain_name)
-                states_recorded = collect_state(step_result[0], states_recorded)
-                rewards_recorded = collect_reward(step_result[0], rewards_recorded)
-                done = collect_done(step_result[1], done)
+            # while any_false(states_recorded):
+            #     self.env.step()
+            #     step_result = self.env.get_steps(self.brain_name)
+            #     states_recorded = collect_state(step_result[0], states_recorded)
+            #     rewards_recorded = collect_reward(step_result[0], rewards_recorded)
+            #     done = collect_done(step_result[1], done)
             for i, v in enumerate(done):
                 if v:
                     rewards_recorded[i] = -1
 
             reward = np.array(rewards_recorded)
+            # print(states_recorded)
             next_state = [torch.cat(i, dim=0) for i in list(zip(*states_recorded))]
             #array: (num_agents,) boolean
             # recognize the current reward first
@@ -215,29 +222,30 @@ class PPO_Agent():
             for i in step_result[0].agent_id:
                 self.running_rewards[i] += reward[i]
             if is_collecting:
-                s.append(state) #TENSOR: num_agents x state_size (129)
+                s.append(state) #TENSOR: num_agents x state_size
                 p.append(state_predict['log_prob'].detach()) #tensor: (num_agents x 1), NO grad
                 a.append(state_predict['a']) #tensor: num_agents x action_size
                 r.append(np.array(reward).reshape(-1,1)) #array: num_agents x 1
-                ns.append(next_state) #TENSOR: num_agents x state_size (129)
+                ns.append(next_state) #TENSOR: num_agents x state_size
                 d.append(1.*np.array(done).reshape(-1,1)) #array: num_agents x 1， 1. 0.
                 V.append(state_predict['v'].detach().numpy()) #Q value TENSOR:
                                                               #num_agents x 1, require grad
+            state = next_state
             if ep_len >= T_MAX:
                 if is_collecting:
                     is_collecting = False
                     last_state = next_state
 
                 # if np.all(done) or ep_len>=T_MAX_EPS: #only if t_max is reached and np.all done.
-                agents_mean_eps_reward = np.nanmean(self.running_rewards+1e-10)
-                if not np.isnan(agents_mean_eps_reward):
-                    self.episodic_rewards.append(agents_mean_eps_reward) #avoid nan
-                self.total_steps.append(ep_len)
-                break
-            state = next_state
+                    agents_mean_eps_reward = np.nanmean(self.running_rewards+1e-10)
+                    if not np.isnan(agents_mean_eps_reward):
+                        self.episodic_rewards.append(agents_mean_eps_reward) #avoid nan
+                    self.total_steps.append(ep_len)
+                    break
+
             ep_len += 1
         assert(len(s) == T_MAX+1)
-        last_state = next_state
+
         # Compute the Advantage/Return value
         # note that last state has no entry in record in V
         last_state_predict = self.model_local(last_state)
@@ -274,7 +282,7 @@ class PPO_Agent():
         """
 
         self._collect_trajectory_data(train_mode=train_mode)
-        print('End Step')
+
         if train_mode and len(self.memory) >= BATCH_SIZE * MIN_BATCH_NO:
             if self.is_training == False:
                 print("Prefetch completed. Training starts! \r")
@@ -310,7 +318,7 @@ class PPO_Agent():
                 batch of Advantages: (tensor) batch_size or num_agents x 1
                 batch of Returns/TDs: (tensor) batch_size or num_agents x 1
         """
-        print("Learning")
+
         for (s, old_prob, old_actions, r, Advantage, returns_) in randomized_batches:
             #s, p, a, r, Advantage, td_target = m_batch
 
@@ -338,7 +346,7 @@ class PPO_Agent():
 
             # TOTAL LOSS
             total_loss = actor_loss + CRITIC_L_WEIGHT * critic_loss
-            print("Total Loss:", total_loss)
+            print("Total Loss:", total_loss, actor_loss, critic_loss)
             self.optim.zero_grad()
             total_loss.backward() #retain_graph=True
             U.clip_grad_norm_(self.model_local.parameters(), GRAD_CLIP_MAX)
@@ -378,7 +386,7 @@ class ReplayBuffer:
         for s, p, a, r, A, rt in zip(s_, p_, a_, r_, A_, rt_): #by time step
             i = 0
             while i < self.num_agents: #by agent
-                e = self.data(s, p[i,:].detach(), a[i], r[i], A[i], rt[i])
+                e = self.data([s[0][i]], p[i,:].detach(), a[i,:], r[i], A[i], rt[i])
                 self.memory.append(e)
                 i += 1
 
@@ -399,29 +407,31 @@ class ReplayBuffer:
         result = []
         for batch_no, sample_ind in enumerate(indices):
             if len(sample_ind) >= self.batch_size / 2:
-                s_s, s_pr, s_p, s_a, s_r, s_A, s_rt = ([] for l in range(7))
+                s_s1, s_p, s_a, s_r, s_A, s_rt = ([] for l in range(6))
 
                 i = 0
                 while i < len(sample_ind): #while loop is faster
-                    s_s.append(all_s[sample_ind[i]][0]) #@each torch, state_size
-                    s_pr.append(all_s[sample_ind[i]][1]) #@each torch, state_size
+                    s_s1.append(all_s[sample_ind[i]][0]) #@each torch, state_size
+
+                    # s_s2.append(all_s[sample_ind[i]][1]) #@each torch, state_size
+                    # s_pr.append(all_s[sample_ind[i]][2]) #@each torch, state_size
                     s_p.append(all_p[sample_ind[i]]) #@each torch, 1
                     s_a.append(all_a[sample_ind[i]]) #@each array, (action_size,)
                     s_r.append(all_r[sample_ind[i]]) #@each array, 1
                     s_A.append(all_A[sample_ind[i]]) #@each array, 1
                     s_rt.append(all_rt[sample_ind[i]]) #@each array, 1
                     i += 1
-
                 # change the format to tensor and make sure dims are correct for calculation
-                s_s = torch.stack(s_s).float().squeeze(1).to(device)
-                s_pr = torch.stack(s_pr).float().squeeze(1).to(device)
-                s_p = torch.stack(s_p).float().to(device)
-                s_a = torch.stack(s_a).float().to(device)
-                s_r = torch.from_numpy(np.vstack(s_r)).float().to(device)
-                s_A = torch.from_numpy(np.stack(s_A)).float().to(device)
-                s_rt = torch.from_numpy(np.stack(s_rt)).float().to(device)
+                s_s1 = torch.stack(s_s1).float().squeeze(1)
+                # s_s2 = torch.stack(s_s2).float().squeeze(1)
+                # s_pr = torch.stack(s_pr).float().squeeze(1)
+                s_p = torch.stack(s_p).float()
+                s_a = torch.stack(s_a).float()
+                s_r = torch.from_numpy(np.vstack(s_r)).float()
+                s_A = torch.from_numpy(np.stack(s_A)).float()
+                s_rt = torch.from_numpy(np.stack(s_rt)).float()
 
-                result.append(([s_s, s_pr], s_p, s_a, s_r, s_A, s_rt))
+                result.append(([s_s1], s_p, s_a, s_r, s_A, s_rt))
 
         return result
 
