@@ -1,16 +1,22 @@
+import sys
 import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
-from ppo_actor_critic import *
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
+
+from ppo_actor_critic import *
+
 
 def main():
     ############## Hyperparameters ##############
     env_name = "mouse_agent-v2"
-    render = False
+
+    action_dim = 3
+    state_dim = 62
+
     solved_reward = 300         # stop training if avg_reward > solved_reward
     log_interval = 10           # print avg reward in the interval
     max_episodes = 3000        # max training episodes
@@ -28,15 +34,17 @@ def main():
     random_seed = None
     #############################################
 
-    # creating environment
-    env = UnityEnvironment(base_port=5004)
+    # run environment from an executable or the Unity editor.
+    if len(sys.argv) == 1:
+        env = UnityEnvironment(base_port=5004)
+    else:
+        env = UnityEnvironment(file_name=sys.argv[1])
     env.reset()
     group_name = env.get_behavior_names()[0]
     group_spec = env.get_behavior_spec(group_name)
     step_result = env.get_steps(group_name)
     print("Number of observations : ", group_spec.observation_shapes)
-    action_dim = 3
-    state_dim = 62
+
 
     if random_seed:
         print("Random Seed: {}".format(random_seed))
@@ -86,8 +94,6 @@ def main():
                 time_step = 0
             running_reward += reward
             episode_reward += reward
-            # if render:
-            #     env.render()
             if done:
                 break
         avg_length += t
@@ -104,6 +110,8 @@ def main():
 
             avg_length = int(avg_length/log_interval)
             running_reward = int((running_reward/log_interval))
+
+            # save model with best average reward.
             if running_reward > best_reward:
                 best_reward = running_reward
                 torch.save(ppo.policy.state_dict(), './PPO_continuous_{}.pth'.format(env_name))

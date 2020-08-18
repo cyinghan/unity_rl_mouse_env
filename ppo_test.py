@@ -1,23 +1,18 @@
-
+import sys
 from PIL import Image
 import torch
 import numpy as np
-from ppo_actor_critic import *
 
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel
 
+from ppo_actor_critic import *
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def test():
     ############## Hyperparameters ##############
     env_name = "mouse_agent-v2"
-    env = UnityEnvironment(base_port=5004)
-    env.reset()
-    group_name = env.get_behavior_names()[0]
-    group_spec = env.get_behavior_spec(group_name)
-    step_result = env.get_steps(group_name)
+
     state_dim = 62
     action_dim = 3
 
@@ -33,9 +28,19 @@ def test():
     eps_clip = 0.2          # clip parameter for PPO
     gamma = 0.99            # discount factor
 
-    lr = 0.0003             # parameters for Adam optimizer
+    lr = 0.0001             # parameters for Adam optimizer
     betas = (0.9, 0.999)
     #############################################
+
+    # run environment from an executable or the Unity editor.
+    if len(sys.argv) == 1:
+        env = UnityEnvironment(base_port=5004)
+    else:
+        env = UnityEnvironment(file_name=sys.argv[1])
+    env.reset()
+    group_name = env.get_behavior_names()[0]
+    group_spec = env.get_behavior_spec(group_name)
+    step_result = env.get_steps(group_name)
 
     memory = Memory()
     ppo = PPO(state_dim, action_dim, action_std, lr, betas, gamma, K_epochs, eps_clip)
