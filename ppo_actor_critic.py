@@ -22,7 +22,7 @@ std=[x / 255.0 for x in [63.0, 62.1, 66.7]])])
 
 
 def preprocess(inputs):
-    """Preprocess images and proprio input"""
+    """Preprocess images and proprio input into tensors with correct dimensions"""
     image_tensor = torch.FloatTensor(inputs[0][0])
     image_tensor = image_tensor.permute([2, 0, 1])
     image_tensor = transform(image_tensor)
@@ -39,6 +39,7 @@ def preprocess(inputs):
     return [image_output1, image_output2, proprio_output]
 
 def collect_done(step_obj, result):
+    """Check agent done status"""
     for i, Id in enumerate(step_obj.agent_id):
         result[Id] = True
     return result
@@ -123,11 +124,15 @@ class ActorCritic(nn.Module):
         # action mean range -1 to 1
         self.actor =  Actor(state_dim, action_dim)
         # critic
+        self.action_dim = action_dim
         self.critic = Critic(state_dim)
         self.action_var = torch.full((action_dim,), action_std*action_std).to(device)
 
     def forward(self):
         raise NotImplementedError
+
+    def update_action_std(self, new_action_std):
+        self.action_var = torch.full((self.action_dim,), new_action_std*new_action_std).to(device)
 
     def act(self, state, memory):
         action_mean = self.actor(state)
@@ -172,6 +177,13 @@ class PPO:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         self.MseLoss = nn.MSELoss()
+
+    def update_models_action_std(self, new_action_std):
+        self.policy.update_action_std(new_action_std)
+        self.policy_old.update_action_std(new_action_std)
+
+    def update_models_eps_clip(self, new_eps_clip):
+        self.eps_clip = new_eps_clip
 
     def select_action(self, state, memory):
         state = preprocess(state)

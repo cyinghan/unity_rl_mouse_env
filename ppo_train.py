@@ -12,23 +12,27 @@ from ppo_actor_critic import *
 
 def main():
     ############## Hyperparameters ##############
-    env_name = "mouse_agent-v2"
+    env_name = "mouse_agent-v3"
 
     action_dim = 3
     state_dim = 62
 
     solved_reward = 300         # stop training if avg_reward > solved_reward
     log_interval = 10           # print avg reward in the interval
-    max_episodes = 3000        # max training episodes
+    max_episodes = 10000        # max training episodes
     max_timesteps = 600        # max timesteps in one episode
 
     update_timestep = 1200      # update policy every n timesteps
-    action_std = 0.25           # constant std for action distribution (Multivariate Normal)
+    action_std = 0.4          # starting std for action distribution (Multivariate Normal)
+    action_std_decay = 0.99    # decay for action distribution
+    action_std_min = 0.05        # min std for action distribution
     K_epochs = 80               # update policy for K epochs
-    eps_clip = 0.2              # clip parameter for PPO
-    gamma = 0.99                # discount factor
+    eps_clip = 0.25             # clip parameter for PPO
+    eps_clip_decay = 0.99
+    eps_clip_min = 0.1
+    gamma = 0.975                # discount factor
 
-    lr = 0.0001                 # parameters for Adam optimizer
+    lr = 0.0003                 # parameters for Adam optimizer
     betas = (0.9, 0.999)
 
     random_seed = None
@@ -54,11 +58,13 @@ def main():
 
     memory = Memory()
     ppo = PPO(state_dim, action_dim, action_std, lr, betas, gamma, K_epochs, eps_clip)
-    ppo.policy.load_state_dict(torch.load('./PPO_continuous_mouse_agent-v2.pth'))
+    # Load the pretrained agent.
+    ppo.policy_old.load_state_dict(torch.load('PPO_continuous_mouse_agent-v3.pth'))
+    ppo.policy.load_state_dict(torch.load('PPO_continuous_mouse_agent-v3.pth'))
     print(lr,betas)
 
     # logging variables
-    best_reward = 0
+    best_reward = -1000
     running_reward = 0
     avg_length = 0
     time_step = 0
@@ -71,6 +77,7 @@ def main():
             time_step +=1
             # Running policy_old:
             action = ppo.select_action(state, memory)
+
             env.set_actions(group_name, np.array([np.clip(action, -1, 1)]))
             env.step()
             step_result = env.get_steps(group_name)
@@ -78,6 +85,9 @@ def main():
             if done:
                 print("Episode terminated early...")
                 reward = 0
+            elif t >= max_timesteps - 1:
+                # auto terminate at the end of episode.
+                done = True
             else:
                 state = step_result[0].obs
                 reward = step_result[0].reward[0]
@@ -85,7 +95,6 @@ def main():
             # Saving reward and is_terminals:
             memory.rewards.append(reward)
             memory.is_terminals.append(done)
-
 
             # update if its time
             if time_step % update_timestep == 0:
@@ -102,7 +111,7 @@ def main():
         # stop training if avg_reward > solved_reward
         if running_reward > (log_interval*solved_reward):
             print("########## Solved! ##########")
-            # torch.save(ppo.policy.state_dict(), './PPO_continuous_solved_{}.pth'.format(env_name))
+            torch.save(ppo.policy.state_dict(), './PPO_continuous_solved_{}.pth'.format(env_name))
             break
 
         # logging
@@ -111,12 +120,23 @@ def main():
             avg_length = int(avg_length/log_interval)
             running_reward = int((running_reward/log_interval))
 
+            # update the model action std.
+            if action_std > action_std_min:
+                action_std = max(action_std*action_std_decay, action_std_min)
+                ppo.update_models_action_std(action_std)
+
+            # update the model clip.
+            if eps_clip > eps_clip_min:
+                eps_clip = max(eps_clip*eps_clip_decay, eps_clip_min)
+                ppo.update_models_eps_clip(eps_clip)
+
             # save model with best average reward.
             if running_reward > best_reward:
                 best_reward = running_reward
                 torch.save(ppo.policy.state_dict(), './PPO_continuous_{}.pth'.format(env_name))
 
-            print('Episode {} \t Avg length: {} \t Avg reward: {}'.format(i_episode, avg_length, running_reward))
+            print('Episode {} \t Avg length: {} \t Avg reward: {} \t action std: {}'.format(
+            i_episode, avg_length, running_reward, action_std))
             running_reward = 0
             avg_length = 0
         env.reset()

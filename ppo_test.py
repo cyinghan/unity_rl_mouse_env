@@ -11,19 +11,19 @@ from ppo_actor_critic import *
 
 def test():
     ############## Hyperparameters ##############
-    env_name = "mouse_agent-v2"
+    env_name = "mouse_agent-v3"
 
     state_dim = 62
     action_dim = 3
 
-    n_episodes = 5          # num of episodes to run
+    n_episodes = 100          # num of episodes to run
     max_timesteps = 600    # max timesteps in one episode
 
     # filename and directory to load model from
-    filename = 'PPO_continuous_mouse_agent-v2.pth'
+    filename = 'PPO_continuous_mouse_agent-v3.pth'
     directory = "./"
 
-    action_std = 0.25        # constant std for action distribution (Multivariate Normal)
+    action_std = 0.01        # constant std for action distribution (Multivariate Normal)
     K_epochs = 80           # update policy for K epochs
     eps_clip = 0.2          # clip parameter for PPO
     gamma = 0.99            # discount factor
