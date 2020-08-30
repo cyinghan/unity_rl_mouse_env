@@ -14,7 +14,7 @@ At the time of writing, updates are made to mlagents frequently so later version
 ## Usage
 
 ```console
- To train through the editor, enter the following command in the terminal and then press the play button in the editor.
+# To train through the editor, enter the following command in the terminal and then press the play button in the editor.
 python ppo_train.py
 
 # To train using the executable, add the file path at the end and the executable will start automatically.
@@ -25,11 +25,11 @@ python ppo_test.py </file/path/executable_name>
 ```
 
 ## Python Script
-The scripts is modified off of nikhilbarhate99's (https://github.com/nikhilbarhate99/PPO-PyTorch) PPO script. The scripts reads from a pretrained resnet18 cutout model and use it to process the images from both eyes. The image vectors are then combine with proprio vector containing the odour gradients to be used as input features.
+The scripts is modified off of nikhilbarhate99's (https://github.com/nikhilbarhate99/PPO-PyTorch) PPO script to work with the Unity MLAgent environment. The scripts reads from a pretrained resnet18 cutout model and use it to process the images from both eyes. Original source of the cutout model is found at (https://github.com/uoguelph-mlrg/Cutout). The image vectors are then combine with proprio vector containing the odour gradients to be used as input features.
 
 The current training script supports a single agent and additional agent will require more cameras which generates additional overheads.
 
-Hyperparameters in the script must be tuned manually inside the script and most of the parameters are constant except for the action stdev which supports decay. Also
+Hyperparameters in the script must be tuned manually inside the script and most of the parameters are constant except for the action stdev and clipping which supports decay.
 
 ## Unity Executable and Editor
 
@@ -48,7 +48,3 @@ The models for the agent and targets are in (Project > Assets > Prefabs). The sc
 - Adjustable movement parameters include side-ways/backwards movement speed reduction and an approximate of speed reduction when mice move through grass based on the number of grass model within range.
 - Olfactory can be adjusted to use a particle system approximation of odour diffusion with wind effect or a simplified odour concentration gradient base on distance from object.
 - Spawn controller script spawns randomly from a list of prefab objects. Other parameter includes spawn distance from agent, spawn speed, and spawn limits.
-
-
-## License
-[MIT](https://choosealicense.com/licenses/mit/)
