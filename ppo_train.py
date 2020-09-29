@@ -42,7 +42,7 @@ def main():
     if len(sys.argv) == 1:
         env = UnityEnvironment(base_port=5004)
     else:
-        env = UnityEnvironment(file_name=sys.argv[1])
+        env = UnityEnvironment(file_name=sys.argv[1], no_graphics=True)
     env.reset()
     group_name = env.get_behavior_names()[0]
     group_spec = env.get_behavior_spec(group_name)
